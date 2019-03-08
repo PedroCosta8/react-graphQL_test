@@ -20,7 +20,7 @@ const GET_ISSUES_OF_REPOSITORY = `
       repository(name: $repository){
         name
         url
-        issues(last:5, after:$cursor, states:[OPEN]){
+        issues(first:5, after:$cursor, states:[OPEN]){
           totalCount
           edges{
             node{
@@ -55,11 +55,37 @@ const getIssuesOfRepository = (path, cursor) => {
     variables: {organization, repository, cursor},
   });
 };
+//pegando os dados da resposta do axios
 
-const resolveIssuesQuery = queryResult => () => ({
-  organization : queryResult.data.data.organization, //pegando os dados da resposta do axios
-  errors: queryResult.data.errors,
-});
+const resolveIssuesQuery = (queryResult, cursor) => state => {
+  const {data, errors} = queryResult.data;
+
+  if(!cursor){
+    return {
+      organization : data.organization,
+      errors,
+    };
+  }
+
+  const {edges: oldIssues} = state.organization.repository.issues; //vem do estado inicial
+  const {edges: newIssues} = data.organization.repository.issues; //vem da primeira query
+  const updatedIssues = [...oldIssues, ...newIssues];//...nome = significa que o parametro pode receber varios valores
+
+  return {
+    organization: {
+      ...data.organization,
+      repository: {
+        ...data.organization.repository,
+        issues: {
+          ...data.organization.repository.issues,
+          edges: updatedIssues,
+        },
+      },
+    },
+    errors,
+  };
+};
+
 
 class App extends Component {
   state = {
@@ -76,6 +102,7 @@ class App extends Component {
   onFetchFromGithub = (path, cursor) => {
     getIssuesOfRepository(path, cursor).then(queryResult =>
         this.setState(resolveIssuesQuery(queryResult, cursor)),
+        //o estado vai ser mudado com a chamada de funcao acima.
       );
      //o metodo vai fazer um POST da query definida mais acima
      //o payload vai ser a query definida mais acima
@@ -182,7 +209,9 @@ const Issues = ({issues, onFetchMoreIssues,}) => (
 
     <hr />
 
-    <button onClick={onFetchMoreIssues}>More</button>
+    {issues.pageInfo.hasNextPage && ( /*so vai exibir o botao se existir uma proxima pagina*/
+      <button onClick={onFetchMoreIssues}>More</button>
+    )}
   </div>
 );
 
