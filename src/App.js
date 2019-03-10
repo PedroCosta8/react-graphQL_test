@@ -18,8 +18,10 @@ const GET_ISSUES_OF_REPOSITORY = `
       url
       description
       repository(name: $repository){
+        id
         name
         url
+        viewerHasStarred
         issues(first:5, after:$cursor, states:[OPEN]){
           totalCount
           edges{
@@ -47,6 +49,17 @@ const GET_ISSUES_OF_REPOSITORY = `
     }
   }
 `; //usando o acento pois as aspas duplas estavam reservadas ao parametro da query
+
+const ADD_STAR = `
+  mutation($repositoryId: ID!){
+    addStar(input : {starrableId:$repositoryId}){
+      starrable{
+        viewerHasStarred
+      }
+    }
+  }
+`
+
 const getIssuesOfRepository = (path, cursor) => {
   const [organization,repository] = path.split('/');
 
@@ -86,6 +99,12 @@ const resolveIssuesQuery = (queryResult, cursor) => state => {
   };
 };
 
+const addStarRepository = repositoryId => {
+  return axiosGitHubGraphQl.post('', {
+    query : ADD_STAR,
+    variables : {repositoryId},
+  });
+};
 
 class App extends Component {
   state = {
@@ -123,6 +142,11 @@ class App extends Component {
     this.onFetchFromGithub(this.state.path, endCursor);
   };
 
+  onStarRepository = (repositoryId, viewerHasStarred) => {
+    addStarRepository(repositoryId);
+  };
+
+  //o type submit esta ligado ao onSubmit//
   render() {
     const {path, organization, errors} = this.state; //ta reccebendo o state definido no inicio da classe
     return (
@@ -145,7 +169,8 @@ class App extends Component {
          <hr />
 
          {organization ? (
-           <Organization organization={organization} errors={errors} onFetchMoreIssues={this.onFetchMoreIssues} />
+           <Organization organization={organization} errors={errors} onFetchMoreIssues={this.onFetchMoreIssues}
+           onStarRepository={this.onStarRepository}/> //parametros passados para Organization
          ) : (
            <p>No information yet...</p>
          )}
@@ -155,7 +180,7 @@ class App extends Component {
   }
 }
 
-const Organization = ({organization, errors, onFetchMoreIssues,}) => {
+const Organization = ({organization, errors, onFetchMoreIssues, onStarRepository,}) => {
   if(errors){
     return (
       <p>
@@ -175,17 +200,21 @@ const Organization = ({organization, errors, onFetchMoreIssues,}) => {
       <p>
         {organization.description}
       </p>
-      <Repository repository={organization.repository} onFetchMoreIssues={onFetchMoreIssues} />
+      <Repository repository={organization.repository} onFetchMoreIssues={onFetchMoreIssues}
+       onStarRepository={onStarRepository}/>
     </div>
   );
 };
 
-const Repository = ({repository, onFetchMoreIssues,}) => (
+const Repository = ({repository, onFetchMoreIssues, onStarRepository,}) => (
   <div>
     <p>
       <strong>In Repository: </strong>
       <a href={repository.url}>{repository.name}</a>
     </p>
+    <button type="button" onClick={() => onStarRepository(repository.id, repository.viewerHasStarred)}>
+      {repository.viewerHasStarred?'Unstar':'Star'}
+    </button>
     <Issues issues={repository.issues} onFetchMoreIssues={onFetchMoreIssues} />
   </div>
 );
