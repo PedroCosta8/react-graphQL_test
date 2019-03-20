@@ -21,6 +21,9 @@ const GET_ISSUES_OF_REPOSITORY = `
         id
         name
         url
+        stargazers {
+          totalCount
+        }
         viewerHasStarred
         issues(first:5, after:$cursor, states:[OPEN]){
           totalCount
@@ -53,6 +56,16 @@ const GET_ISSUES_OF_REPOSITORY = `
 const ADD_STAR = `
   mutation($repositoryId: ID!){
     addStar(input : {starrableId:$repositoryId}){
+      starrable{
+        viewerHasStarred
+      }
+    }
+  }
+` //o field viewerHasStarred vai fazer o state do botao ser alterado
+
+const REMOVE_STAR = `
+  mutation($repositoryId: ID!){
+    removeStar(input : {starrableId:$repositoryId}){
       starrable{
         viewerHasStarred
       }
@@ -99,11 +112,62 @@ const resolveIssuesQuery = (queryResult, cursor) => state => {
   };
 };
 
-const addStarRepository = repositoryId => {
+const addStarToRepository = repositoryId => {
   return axiosGitHubGraphQl.post('', {
-    query : ADD_STAR,
+    query : ADD_STAR, //axios vai executar a query
     variables : {repositoryId},
   });
+};
+
+const removeStarToRepository = repositoryId => {
+  return axiosGitHubGraphQl.post('', {
+    query : REMOVE_STAR,
+    variables : {repositoryId},
+  });
+};
+
+const resolveAddStarMutation = mutationResult => state => { //vai atualizar o estado relacionado ao star ou unstar
+  const {
+    viewerHasStarred,
+  } = mutationResult.data.data.addStar.starrable;
+
+  const {totalCount} = state.organization.repository.stargazers;
+
+  return{
+    ...state,
+    organization: {
+      ...state.organization,
+      repository: {
+        ...state.organization.repository,
+        viewerHasStarred,
+        stargazers: {
+          totalCount: totalCount+1,
+        },
+      },
+    },
+  };
+};
+
+const resolveRemoveStarMutation = mutationResult => state => { //vai atualizar o estado relacionado ao star ou unstar
+  const {
+    viewerHasStarred,
+  } = mutationResult.data.data.removeStar.starrable;
+
+  const {totalCount} = state.organization.repository.stargazers;
+
+  return{
+    ...state,
+    organization: {
+      ...state.organization,
+      repository: {
+        ...state.organization.repository,
+        viewerHasStarred,
+        stargazers: {
+          totalCount: totalCount-1,
+        },
+      },
+    },
+  };
 };
 
 class App extends Component {
@@ -143,7 +207,16 @@ class App extends Component {
   };
 
   onStarRepository = (repositoryId, viewerHasStarred) => {
-    addStarRepository(repositoryId);
+    if(!viewerHasStarred){
+      addStarToRepository(repositoryId).then(mutationResult =>
+      this.setState(resolveAddStarMutation(mutationResult)),
+      );
+    }
+    else {
+      removeStarToRepository(repositoryId).then(mutationResult =>
+      this.setState(resolveRemoveStarMutation(mutationResult)),
+      );
+    }
   };
 
   //o type submit esta ligado ao onSubmit//
@@ -213,6 +286,7 @@ const Repository = ({repository, onFetchMoreIssues, onStarRepository,}) => (
       <a href={repository.url}>{repository.name}</a>
     </p>
     <button type="button" onClick={() => onStarRepository(repository.id, repository.viewerHasStarred)}>
+      {repository.stargazers.totalCount}-
       {repository.viewerHasStarred?'Unstar':'Star'}
     </button>
     <Issues issues={repository.issues} onFetchMoreIssues={onFetchMoreIssues} />
